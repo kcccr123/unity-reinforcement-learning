@@ -1,0 +1,14 @@
+model: ppo
+port: 7777
+seed: 0
+total_timesteps: 10000
+learning_rate: 0.0003
+gamma: 0.99
+n_steps: 256
+device: cpu
+checkpoint_freq: 2000
+output_dir: runs
+resume_from: null
+socket_timeout_seconds: 300
+ppo:
+  batch_size: 64

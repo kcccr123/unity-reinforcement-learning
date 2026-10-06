@@ -1,0 +1,17 @@
+{
+  "name": "com.kcccr.unity-reinforcement-learning",
+  "version": "0.1.0",
+  "displayName": "Unity Reinforcement Learning",
+  "description": "A single-agent Unity training bridge for external Python reinforcement learning.",
+  "unity": "6000.0",
+  "samples": [
+    {
+      "displayName": "Counter training smoke test",
+      "description": "A test-only environment for checking the bridge.",
+      "path": "Samples~/CounterTraining"
+    }
+  ],
+  "author": {
+    "name": "KCCCR"
+  }
+}
