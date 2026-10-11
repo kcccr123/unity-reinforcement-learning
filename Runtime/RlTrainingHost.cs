@@ -11,8 +11,8 @@ using UnityEngine;
 namespace Kcccr.UnityReinforcementLearning
 {
     /// <summary>
-    /// Use case: train one Unity environment from Python. Inputs: environment, port, reset seeds, and actions.
-    /// Outputs: observations, rewards, episode endings, and connection status.
+    /// Connects one Unity environment to the external Python trainer.
+    /// It accepts episode resets and actions, then returns observations, rewards, and completion status.
     /// </summary>
     [AddComponentMenu("Reinforcement Learning/Training Host")]
     [DisallowMultipleComponent]
@@ -34,12 +34,24 @@ namespace Kcccr.UnityReinforcementLearning
         private int observationSize;
         private int actionSize;
 
+        /// <summary>
+        /// Exposes the environment whose episodes this host presents to the trainer.
+        /// </summary>
         public RlEnvironmentBehaviour Environment => environment;
 
+        /// <summary>
+        /// Exposes the port the Python trainer uses to connect to this host.
+        /// </summary>
         public int Port => port;
 
+        /// <summary>
+        /// Reports whether this host is listening for or serving a trainer connection.
+        /// </summary>
         public bool IsListening => listener != null && !workerFinished;
 
+        /// <summary>
+        /// Makes the assigned environment available when automatic startup is enabled at play start.
+        /// </summary>
         private void Start()
         {
             if (autoStart)
@@ -48,6 +60,9 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Advances pending trainer requests through the Unity environment and returns completed results.
+        /// </summary>
         private void Update()
         {
             while (workerErrors.TryDequeue(out string error))
@@ -73,11 +88,18 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Ends the training session when this Unity component is disabled.
+        /// </summary>
         private void OnDisable()
         {
             StopTraining();
         }
 
+        /// <summary>
+        /// Makes the assigned environment available to Python on the configured port.
+        /// Returns true when the host is ready or already active, and false if it cannot start.
+        /// </summary>
         public bool StartTraining()
         {
             if (listener != null)
@@ -126,6 +148,9 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Ends the current training session so the environment no longer receives trainer requests.
+        /// </summary>
         public void StopTraining()
         {
             stopping = true;
@@ -150,6 +175,9 @@ namespace Kcccr.UnityReinforcementLearning
             episodeActive = false;
         }
 
+        /// <summary>
+        /// Uses the supplied listener to exchange requests and results with one Python trainer.
+        /// </summary>
         private void RunSession(TcpListener server)
         {
             try
@@ -206,6 +234,9 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Routes a trainer's reset or action request to the environment and prepares its response.
+        /// </summary>
         private void ProcessRequest(BridgeRequest request)
         {
             if (RlProtocol.TryParseReset(request.Message, out int seed))
@@ -248,6 +279,9 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Returns the next observation, reward, and episode status once the environment's action finishes.
+        /// </summary>
         private void CompleteActionIfReady()
         {
             BridgeRequest request = activeRequest;
@@ -270,6 +304,9 @@ namespace Kcccr.UnityReinforcementLearning
             }
         }
 
+        /// <summary>
+        /// Reports an environment error to the trainer and ends the current episode.
+        /// </summary>
         private void FailRequest(BridgeRequest request, Exception exception)
         {
             Debug.LogError($"RL environment failed: {exception.Message}", this);
@@ -278,12 +315,18 @@ namespace Kcccr.UnityReinforcementLearning
             request.Reply.TrySetResult("ERROR=ENVIRONMENT");
         }
 
+        /// <summary>
+        /// Carries one trainer message and its eventual response between the connection and environment.
+        /// </summary>
         private sealed class BridgeRequest
         {
             public readonly string Message;
             public readonly TaskCompletionSource<string> Reply =
                 new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            /// <summary>
+            /// Creates a request for the supplied trainer message, ready for an environment response.
+            /// </summary>
             public BridgeRequest(string message)
             {
                 Message = message;

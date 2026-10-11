@@ -3,16 +3,27 @@ using System.Globalization;
 
 namespace Kcccr.UnityReinforcementLearning
 {
+    /// <summary>
+    /// Defines the messages exchanged between the Unity host and Python trainer for one agent.
+    /// It carries environment dimensions, reset and action requests, and step results.
+    /// </summary>
     internal static class RlProtocol
     {
         private const string ResetPrefix = "ACT=RESET;SEED=";
         private const string ActionPrefix = "ACT=";
 
+        /// <summary>
+        /// Sends the observation and action sizes Python needs to set up its training environment.
+        /// </summary>
         public static string Handshake(int observationSize, int actionSize)
         {
             return $"CONFIG:OBS={observationSize};ACT={actionSize};ENV_TYPE=SINGLE";
         }
 
+        /// <summary>
+        /// Reads the seed from a trainer request so the host can begin a new episode.
+        /// Returns false if the message is not a valid reset request.
+        /// </summary>
         public static bool TryParseReset(string message, out int seed)
         {
             seed = 0;
@@ -21,6 +32,10 @@ namespace Kcccr.UnityReinforcementLearning
                     CultureInfo.InvariantCulture, out seed);
         }
 
+        /// <summary>
+        /// Reads the trainer's next action for the host to apply to the environment.
+        /// Returns false unless it contains the expected number of values in [-1, 1].
+        /// </summary>
         public static bool TryParseAction(string message, int actionSize, out float[] action)
         {
             action = null;
@@ -51,6 +66,10 @@ namespace Kcccr.UnityReinforcementLearning
             return true;
         }
 
+        /// <summary>
+        /// Returns an observation, reward, and episode-end flag to the trainer after a reset or step.
+        /// The observation must contain the expected number of values.
+        /// </summary>
         public static string State(float[] observation, int observationSize, float reward, bool isDone)
         {
             if (observation == null || observation.Length != observationSize ||
