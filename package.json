@@ -4,6 +4,9 @@
   "displayName": "Unity Reinforcement Learning",
   "description": "A single-agent Unity training bridge for external Python reinforcement learning.",
   "unity": "6000.0",
+  "dependencies": {
+    "com.unity.ai.inference": "2.2.2"
+  },
   "samples": [
     {
       "displayName": "Counter training smoke test",

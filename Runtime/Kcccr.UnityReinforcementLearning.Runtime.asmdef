@@ -1,4 +1,5 @@
 {
   "name": "Kcccr.UnityReinforcementLearning.Runtime",
-  "rootNamespace": "Kcccr.UnityReinforcementLearning"
+  "rootNamespace": "Kcccr.UnityReinforcementLearning",
+  "references": ["Unity.InferenceEngine"]
 }
