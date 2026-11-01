@@ -49,6 +49,9 @@ def load_config(path: Path) -> dict:
     if (type(config.get("gamma")) not in (int, float) or
             not math.isfinite(config["gamma"]) or not 0 < config["gamma"] <= 1):
         raise ValueError("gamma must be between 0 and 1.")
+    entropy = config.get("ent_coef", 0.0)
+    if type(entropy) not in (int, float) or not math.isfinite(entropy) or entropy < 0:
+        raise ValueError("ent_coef must be a finite nonnegative number.")
     if not isinstance(config.get("output_dir"), str) or not config["output_dir"]:
         raise ValueError("output_dir must be a path.")
     if not isinstance(config.get("device"), str) or not config["device"]:
@@ -91,10 +94,13 @@ def train(config_path: Path) -> Path:
             if not resume_path.is_absolute():
                 resume_path = config_path.parent / resume_path
             model = algorithm.load(str(resume_path), env=vector_environment, device=config["device"])
+            if "ent_coef" in config:
+                model.ent_coef = config["ent_coef"]
         else:
             parameters = {
                 "learning_rate": config["learning_rate"],
                 "gamma": config["gamma"],
+                "ent_coef": config.get("ent_coef", 0.0),
                 "n_steps": config["n_steps"],
                 "device": config["device"],
                 "seed": config["seed"],

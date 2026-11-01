@@ -1,9 +1,13 @@
+# Copy this template into the project or directory that owns the model.
+# Relative output_dir and resume_from paths resolve beside that config copy.
 model: ppo
 port: 7777
 seed: 0
 total_timesteps: 10000
 learning_rate: 0.0003
 gamma: 0.99
+# Optional entropy regularization; zero preserves the default objective.
+ent_coef: 0.0
 n_steps: 256
 device: cpu
 checkpoint_freq: 2000
