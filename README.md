@@ -1,15 +1,72 @@
-# unity-reinforcement-learning
+# Unity reinforcement learning
 
-Use case: Train one Unity agent through an external Python trainer. Implement `RlEnvironmentBehaviour` for your environment and assign it to `RlTrainingHost`; no game-specific environment is included.
+Train one agent in a developer-defined Unity environment through an external Python trainer, then run supported exported policies locally. The framework supplies the bridge, trainer, exporter, and model runner. The developer supplies the task and observation/action meanings.
 
-Inputs: A reset seed, continuous action vector in `[-1, 1]`, environment callbacks, and training settings in `PythonEnv/example_config.yaml`.
+## Initial package setup
 
-Outputs: Observations, rewards, episode endings, checkpoints, a final model `.zip`, and an exported ONNX policy for local Unity inference.
+1. Install `package.json` through Unity Package Manager's **Install package from disk** command. Code in an assembly definition references `Kcccr.UnityReinforcementLearning.Runtime`.
+2. Prepare a Python environment and install `PythonEnv/requirements.txt` from this repository. Install `PythonEnv/requirements-export.txt` when exporting ONNX.
+3. Create a training-config/artifact directory in the project that owns the model. Copy `PythonEnv/example_config.yaml` there as a template.
 
-Run: Install `PythonEnv/requirements.txt`, press Play in Unity, then run `python PythonEnv/train.py --config PythonEnv/example_config.yaml`. The counter sample is only for a smoke test.
+## Implement an environment
 
-Deploy: Install `PythonEnv/requirements-export.txt`, then run `python PythonEnv/export_onnx.py path/to/final_model.zip path/to/policy.onnx`. This exports a PPO MlpPolicy with deterministic, clipped actions, float32 `obs` and `actions` tensors, batch size 1, and ONNX opset 15. The checkpoint must use the bridge's continuous `[-1, 1]` action space and a flat observation vector.
+Derive a component from `RlEnvironmentBehaviour` and implement these callbacks:
 
-Unity: The package declares Inference Engine 2.2.2 as its minimum dependency; the Unity 6000.3.2f1 game resolves 2.4.1. Import the ONNX file into the game's Assets, assign it to `RlModelRunner`, and call `Predict(float[] observation)` when the game needs an action. The runner keeps a CPU worker alive until its component is destroyed. Training uses `RlTrainingHost`; deployed inference only needs `RlModelRunner` and the game's observation/action mapping.
+| Contract | Developer responsibility |
+| --- | --- |
+| `ObservationSize`, `ActionSize` | Fixed vector lengths. Observations are flat finite floats; continuous actions are in `[-1, 1]`. |
+| `ResetEpisode(seed)` | Prepare a new episode and reset tracking. |
+| `CollectObservation()` | Encode current state in a documented field order. |
+| `ApplyAction(action)` | Decode and apply one action. |
+| `IsActionRunning()` | Keep returning true until the action has finished. |
+| `CalculateReward(out isDone)` | Supply the learning reward and episode-ending flag. |
 
-PCG examples: The sibling `kawaii-power-little-adventure` project contains `PcgRlEnvironment`, `Assets/Scenes/PcgTraining.unity`, and `Training/pcg.yaml` for room-count training. Its second example uses `PcgLayoutTraining.unity` and `Training/pcg-layout.yaml` for room count, width, and height. The corresponding `PcgModelDemo.unity` and `PcgLayoutModelDemo.unity` scenes run their saved ONNX models locally. See the game's `Training/README.md` and the README beside each demo for setup and results.
+Add **Reinforcement Learning > Training Host** to a scene, assign the environment, and choose a port. Match it in the model-owned YAML. The host defaults to 7777 and dispatches Unity callbacks on the main thread. It calculates reward/done before collecting the post-action observation; preserve the terminal snapshot until returned. The included counter sample is available to check the bridge.
+
+## Run training
+
+```text
++------------------------------------------------------------------+
+| PYTHON: trainer + UnityGymEnv                                    |
+| Load model-owned YAML.                                           |
+| Save model-owned checkpoints and final_model.zip.                |
++------------------------------------------------------------------+
+             | reset / action
+             ^ observation / reward / done
+             | loopback TCP
+             v
++------------------------------------------------------------------+
+| UNITY: RlTrainingHost                                            |
+| Dispatch callbacks to the developer's Unity environment.         |
++------------------------------------------------------------------+
+             |
+             v
++------------------------------------------------------------------+
+| DEVELOPER ENVIRONMENT                                            |
+| Reset -> observe -> apply action -> reward / done.               |
++------------------------------------------------------------------+
+```
+
+Start the Unity scene, then run:
+
+```shell
+python path/to/unity-reinforcement-learning/PythonEnv/train.py --config path/to/model-project/Training/agent.yaml
+```
+
+The YAML selects PPO/A2C, seed, learning parameters, timestep budget, device, checkpoint frequency, output directory, and optional compatible checkpoint resumption. Optional `ent_coef` controls entropy regularization; it defaults to zero for fresh policies. If specified while resuming, it overrides the saved coefficient. Relative `output_dir` and `resume_from` paths resolve beside that YAML; absolute paths are accepted. Each run writes a timestamped directory. Keep project configs, checkpoints, and results with their model owner rather than in this library.
+
+The trainer uses feedforward `MlpPolicy`. PPO completes its final rollout, so requested timesteps do not guarantee an exact step or episode count. Restart Play/the player or restart the host before another trainer connection. The framework does not implement curriculum scheduling or task-specific rewards.
+
+## Export and deploy
+
+```shell
+python path/to/unity-reinforcement-learning/PythonEnv/export_onnx.py path/to/final_model.zip path/to/model-project/Assets/Models/agent.onnx
+```
+
+The exporter supports PPO `MlpPolicy` with flat observations and continuous `[-1, 1]` actions. It exports deterministic clipped actions with float32 `obs`/`actions`, batch size 1, and ONNX opset 15.
+
+Import the asset, add **Reinforcement Learning > Model Runner**, and assign it. A developer-written policy adapter calls `Predict(float[] observation)` and applies the result using the same encoding/decoding as training. The runner rejects incompatible static input shapes and reuses a CPU worker until destroyed. Local inference needs neither Python nor a training host. Compare exported actions with the checkpoint, then evaluate task performance on separate scenarios.
+
+## Examples
+
+The sibling game's [training guide](../kawaii-power-little-adventure/Training/README.md) and [integration design](../kawaii-power-little-adventure/Training/PCG-system-design.md) demonstrate actor control and generation-parameter selection. Their sensors, rewards, scenes, and model contracts are game-specific examples. Optional final-evidence reporting uses the separate [QA framework](../rein-powered-QA-framework/README.md).
