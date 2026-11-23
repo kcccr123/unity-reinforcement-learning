@@ -57,6 +57,8 @@ The YAML selects PPO/A2C, seed, learning parameters, timestep budget, device, ch
 
 The trainer uses feedforward `MlpPolicy`. PPO completes its final rollout, so requested timesteps do not guarantee an exact step or episode count. Restart Play/the player or restart the host before another trainer connection. The framework does not implement curriculum scheduling or task-specific rewards.
 
+Set the optional `metrics_dir` YAML path to also write Stable-Baselines3 logging snapshots to `progress.json`, one JSON object per line. Console progress remains available. Relative paths resolve beside the config. Give each invocation a separate metrics directory to retain its metrics history.
+
 ## Export and deploy
 
 ```shell

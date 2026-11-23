@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 from stable_baselines3 import A2C, PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -54,6 +55,9 @@ def load_config(path: Path) -> dict:
         raise ValueError("ent_coef must be a finite nonnegative number.")
     if not isinstance(config.get("output_dir"), str) or not config["output_dir"]:
         raise ValueError("output_dir must be a path.")
+    metrics_dir = config.get("metrics_dir")
+    if metrics_dir is not None and (not isinstance(metrics_dir, str) or not metrics_dir.strip()):
+        raise ValueError("metrics_dir must be a path or null.")
     if not isinstance(config.get("device"), str) or not config["device"]:
         raise ValueError("device must be a nonempty string.")
     timeout = config.get("socket_timeout_seconds", 300)
@@ -84,6 +88,7 @@ def train(config_path: Path) -> Path:
     )
     started = time.monotonic()
     vector_environment = None
+    metrics_logger = None
     try:
         vector_environment = DummyVecEnv([lambda: Monitor(environment)])
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -110,6 +115,13 @@ def train(config_path: Path) -> Path:
                 parameters["batch_size"] = config["ppo"]["batch_size"]
             model = algorithm("MlpPolicy", vector_environment, **parameters)
 
+        if config.get("metrics_dir") is not None:
+            metrics_dir = Path(config["metrics_dir"])
+            if not metrics_dir.is_absolute():
+                metrics_dir = config_path.parent / metrics_dir
+            metrics_logger = configure(str(metrics_dir), ["stdout", "json"])
+            model.set_logger(metrics_logger)
+
         callback = None
         if config["checkpoint_freq"]:
             callback = CheckpointCallback(
@@ -127,10 +139,14 @@ def train(config_path: Path) -> Path:
         print(f"Training complete: {final_path} ({time.monotonic() - started:.1f}s)")
         return final_path
     finally:
-        if vector_environment is not None:
-            vector_environment.close()
-        else:
-            environment.close()
+        try:
+            if metrics_logger is not None:
+                metrics_logger.close()
+        finally:
+            if vector_environment is not None:
+                vector_environment.close()
+            else:
+                environment.close()
 
 
 def main() -> int:

@@ -1,3 +1,4 @@
+import json
 import socket
 import sys
 import threading
@@ -183,7 +184,8 @@ def test_training_saves_model(tmp_path, capsys, model_name, model_class):
         assert "Training complete:" in capsys.readouterr().out
 
 
-def test_training_resumes_from_saved_model(tmp_path):
+# train with json logging -> resume with a new metrics directory -> check console, json, and continued timesteps
+def test_training_resumes_from_saved_model(tmp_path, capsys):
     config_path = tmp_path / "training.yaml"
     config = {
         "model": "ppo",
@@ -195,6 +197,7 @@ def test_training_resumes_from_saved_model(tmp_path):
         "device": "cpu",
         "checkpoint_freq": 0,
         "output_dir": "runs",
+        "metrics_dir": "first-metrics",
         "ppo": {"batch_size": 4},
     }
     with CounterServer() as server:
@@ -205,11 +208,18 @@ def test_training_resumes_from_saved_model(tmp_path):
     with CounterServer() as server:
         config["port"] = server.port
         config["resume_from"] = str(first_model)
+        config["metrics_dir"] = "resumed-metrics"
         config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
         resumed_model = train(config_path)
 
     assert resumed_model.is_file()
     assert PPO.load(str(resumed_model)).num_timesteps > PPO.load(str(first_model)).num_timesteps
+    first = [json.loads(row) for row in (tmp_path / "first-metrics" / "progress.json").read_text().splitlines()]
+    resumed = [json.loads(row) for row in (tmp_path / "resumed-metrics" / "progress.json").read_text().splitlines()]
+    assert first[-1]["time/total_timesteps"] == 16
+    assert resumed[-1]["time/total_timesteps"] == 32
+    assert resumed[-1]["rollout/ep_rew_mean"] == 1.0
+    assert capsys.readouterr().out.count("ep_rew_mean") == 4
 
 
 def test_config_rejects_unknown_model(tmp_path):
