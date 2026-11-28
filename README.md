@@ -55,7 +55,7 @@ python path/to/unity-reinforcement-learning/PythonEnv/train.py --config path/to/
 
 The YAML selects PPO/A2C, seed, learning parameters, timestep budget, device, checkpoint frequency, output directory, and optional compatible checkpoint resumption. Optional `ent_coef` controls entropy regularization; it defaults to zero for fresh policies. If specified while resuming, it overrides the saved coefficient. Relative `output_dir` and `resume_from` paths resolve beside that YAML; absolute paths are accepted. Each run writes a timestamped directory. Keep project configs, checkpoints, and results with their model owner rather than in this library.
 
-The trainer uses feedforward `MlpPolicy`. PPO completes its final rollout, so requested timesteps do not guarantee an exact step or episode count. Restart Play/the player or restart the host before another trainer connection. The framework does not implement curriculum scheduling or task-specific rewards.
+The trainer uses feedforward `MlpPolicy`. A timestep budget alone lets PPO complete its final rollout. Set the optional `max_episodes` to end at an exact completed-episode count, with a `total_timesteps` budget large enough to reach it. The trainer stops before starting another Unity episode and saves the last completed PPO update. Restart Play/the player or restart the host before another trainer connection.
 
 Set the optional `metrics_dir` YAML path to also write Stable-Baselines3 logging snapshots to `progress.json`, one JSON object per line. Console progress remains available. Relative paths resolve beside the config. Give each invocation a separate metrics directory to retain its metrics history.
 

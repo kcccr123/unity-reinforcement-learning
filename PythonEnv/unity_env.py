@@ -17,13 +17,17 @@ class BridgeError(RuntimeError):
 class UnityGymEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, port: int = 7777, seed: int = 0, timeout_seconds: float = 300):
+    def __init__(self, port: int = 7777, seed: int = 0, timeout_seconds: float = 300,
+                 max_episodes: int | None = None):
         super().__init__()
         self._socket = socket.create_connection(("127.0.0.1", port), timeout=timeout_seconds)
         self._socket.settimeout(timeout_seconds)
         self._stream = self._socket.makefile("rwb")
         self._next_seed = seed
         self._active = False
+        self.max_episodes = max_episodes
+        self.completed_episodes = 0
+        self._final_observation = None
         try:
             self.observation_size, self.action_size = self._parse_handshake(self._read_line())
         except Exception:
@@ -39,6 +43,9 @@ class UnityGymEnv(gym.Env):
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
+        # DummyVecEnv resets immediately after a terminal transition, before callbacks run.
+        if self._final_observation is not None:
+            return self._final_observation.copy(), {}
         episode_seed = self._next_seed if seed is None else seed
         if not isinstance(episode_seed, int) or not 0 <= episode_seed <= 2_147_483_647:
             raise ValueError("Reset seed must be a nonnegative 32-bit integer.")
@@ -64,6 +71,10 @@ class UnityGymEnv(gym.Env):
         self._write_line(f"ACT={encoded}")
         observation, reward, done = self._parse_state(self._read_line())
         self._active = not done
+        if done:
+            self.completed_episodes += 1
+            if self.completed_episodes == self.max_episodes:
+                self._final_observation = observation.copy()
         return observation, reward, done, False, {}
 
     def close(self):

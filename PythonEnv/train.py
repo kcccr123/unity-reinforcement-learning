@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 from stable_baselines3 import A2C, PPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -20,6 +20,21 @@ from unity_env import UnityGymEnv
 
 
 ALGORITHMS = {"ppo": PPO, "a2c": A2C}
+
+
+class EpisodeBudget(BaseCallback):
+    def __init__(self, environment: UnityGymEnv, limit: int):
+        super().__init__()
+        self.environment = environment
+        self.limit = limit
+
+    def _on_training_start(self) -> None:
+        self.parent_episodes = getattr(self.model, "completed_lineage_episodes", 0)
+
+    def _on_step(self) -> bool:
+        completed = self.environment.completed_episodes
+        self.model.completed_lineage_episodes = self.parent_episodes + completed
+        return completed < self.limit
 
 
 def load_config(path: Path) -> dict:
@@ -37,6 +52,8 @@ def load_config(path: Path) -> dict:
         value = config.get(name)
         if type(value) is not int or value <= 0:
             raise ValueError(f"{name} must be a positive integer.")
+    if "max_episodes" in config and (type(config["max_episodes"]) is not int or config["max_episodes"] <= 0):
+        raise ValueError("max_episodes must be a positive integer.")
 
     if config["port"] > 65535:
         raise ValueError("port must be at most 65535.")
@@ -85,6 +102,7 @@ def train(config_path: Path) -> Path:
         port=config["port"],
         seed=config["seed"],
         timeout_seconds=config.get("socket_timeout_seconds", 300),
+        max_episodes=config.get("max_episodes"),
     )
     started = time.monotonic()
     vector_environment = None
@@ -98,7 +116,10 @@ def train(config_path: Path) -> Path:
             resume_path = Path(resume_path)
             if not resume_path.is_absolute():
                 resume_path = config_path.parent / resume_path
-            model = algorithm.load(str(resume_path), env=vector_environment, device=config["device"])
+            overrides = {}
+            if "max_episodes" in config:
+                overrides["seed"] = config["seed"]
+            model = algorithm.load(str(resume_path), env=vector_environment, device=config["device"], **overrides)
             if "ent_coef" in config:
                 model.ent_coef = config["ent_coef"]
         else:
@@ -122,18 +143,23 @@ def train(config_path: Path) -> Path:
             metrics_logger = configure(str(metrics_dir), ["stdout", "json"])
             model.set_logger(metrics_logger)
 
-        callback = None
+        callbacks = []
+        if "max_episodes" in config:
+            callbacks.append(EpisodeBudget(environment, config["max_episodes"]))
         if config["checkpoint_freq"]:
-            callback = CheckpointCallback(
+            callbacks.append(CheckpointCallback(
                 save_freq=config["checkpoint_freq"],
                 save_path=str(run_dir),
                 name_prefix="checkpoint",
-            )
+            ))
         model.learn(
             total_timesteps=config["total_timesteps"],
-            callback=callback,
+            callback=CallbackList(callbacks),
             reset_num_timesteps=not bool(resume_path),
         )
+        if "max_episodes" in config and environment.completed_episodes != config["max_episodes"]:
+            raise RuntimeError(f"Action budget exhausted after {environment.completed_episodes} episodes "
+                               f"of {config['max_episodes']}.")
         final_path = run_dir / "final_model.zip"
         model.save(str(final_path))
         print(f"Training complete: {final_path} ({time.monotonic() - started:.1f}s)")
